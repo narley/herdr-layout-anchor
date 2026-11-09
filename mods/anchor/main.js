@@ -14,7 +14,7 @@
 //   anchor.alongside  true while that list is open
 import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input } from "gpui-base";
-import { agents, terminals, spaces, panes, run, openOverlay, notify, setAgentOrder, theme, shared, setShared, props, window as appWindow } from "herdr";
+import { hc, agents, terminals, spaces, panes, run, openOverlay, notify, setAgentOrder, theme, shared, setShared, props, window as appWindow } from "herdr";
 
 const NOW = "anchor.now";
 const SEEN = "anchor.seen";
@@ -43,8 +43,9 @@ const WORDS = {
   done: "Finished, have a look",
   working: "Working",
   idle: "Resting",
+  detached: "Detached, click to reattach",
 };
-const SHORT = { blocked: "Waiting", done: "Finished", working: "Working", idle: "Resting" };
+const SHORT = { detached: "Detached", blocked: "Waiting", done: "Finished", working: "Working", idle: "Resting" };
 const RANK = { blocked: 0, done: 1, working: 2, idle: 3 };
 
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
@@ -81,6 +82,24 @@ function setQuiet(on) {
   }
 }
 
+// An attached session's pane can lose Claude (a restart, a crash) and fall back to a shell, while
+// its old labels stay. Such a card is DETACHED, and clicking it reattaches: it only types when the
+// pane is at a shell prompt, so anything else running there just gets focus.
+const detachedFrom = (t) => {
+  const fg = t.foreground;
+  return Boolean(fg) && !(fg.argv ?? []).join(" ").includes("claude") && !/^\d+\.\d+\.\d+/.test(fg.name ?? "");
+};
+const atShell = (t) => /^-?(zsh|bash|fish|sh|dash)$/.test(String(t.foreground?.name ?? "").split("/").pop());
+async function reattach(k) {
+  run("pane.focus", { terminal: k.address });
+  if (!k.shell || !/^[A-Za-z0-9_-]+$/.test(k.bg ?? "")) return;
+  const profile = k.stats?.profile;
+  const config = profile && profile !== "default" && /^[A-Za-z0-9_-]+$/.test(profile) ? `CLAUDE_CONFIG_DIR="$HOME/.claude-${profile}" ` : "";
+  await hc(["keys", k.address, "ctrl+u"]);   // anything half-typed at the prompt
+  const r = await hc(["send", k.address, `${config}claude attach ${k.bg}`]);
+  if (r.code !== 0) notify({ title: "Couldn't reattach", body: (r.stderr || r.stdout || "").trim(), level: "error" });
+}
+
 // Attached background sessions, by their parent's address, as agent-shaped rows.
 function bgChildren(all) {
   const out = new Map();
@@ -92,8 +111,8 @@ function bgChildren(all) {
     if (!s.parent) continue;
     const machine = t.address.includes("/") ? `${t.address.split("/")[0]}/` : "";
     const key = `${machine}${s.parent}`;
-    const status = s.state === "working" || s.state === "busy" ? "working" : /input|wait|block/.test(s.state ?? "") ? "blocked" : "idle";
-    out.set(key, [...(out.get(key) ?? []), { address: t.address, app: "claude-code", status, bg: t.labels["claude.bg"], stats: s, child: true }]);
+    const status = detachedFrom(t) ? "detached" : s.state === "working" || s.state === "busy" ? "working" : /input|wait|block/.test(s.state ?? "") ? "blocked" : "idle";
+    out.set(key, [...(out.get(key) ?? []), { address: t.address, app: "claude-code", status, shell: atShell(t), bg: t.labels["claude.bg"], stats: s, child: true }]);
   }
   for (const kids of out.values()) kids.sort((x, y) => String(x.stats.name ?? x.address).localeCompare(String(y.stats.name ?? y.address)));
   return out;
@@ -118,7 +137,7 @@ function nameOf(a, s, sp) {
 // The numbers stay out of sight until you hover.
 function detailsTip(a, s, name, now) {
   const lines = [name, WORDS[a.status] ?? String(a.status ?? "")];
-  if (!s) return lines.join("\n");
+  if (!s || a.status === "detached") return lines.join("\n");
   const old = now - (s.at ?? 0) > STALE_S ? " (old reading)" : "";
   lines.push(s.repo || "~");
   if (s.branch) lines.push(`${s.loc === "wt" ? "Worktree" : "Branch"}: ${s.branch}`);
@@ -292,6 +311,7 @@ export default class Anchor extends View {
   }
 
   go(a) {
+    if (a.status === "detached") return reattach(a);
     run(a.child ? "pane.focus" : "agent.focus", { terminal: a.address });
   }
 
