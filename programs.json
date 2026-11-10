@@ -1,0 +1,24 @@
+{
+  "programs": {
+    "claude-personal": {
+      "name": "Claude (personal)",
+      "icon": "icons/claude.svg",
+      "tint": false,
+      "run": [
+        "zsh",
+        "-lic",
+        "ccp"
+      ]
+    },
+    "claude-work": {
+      "name": "Claude (work)",
+      "icon": "icons/claude.svg",
+      "tint": false,
+      "run": [
+        "zsh",
+        "-lic",
+        "ccw"
+      ]
+    }
+  }
+}

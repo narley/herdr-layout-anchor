@@ -27,5 +27,20 @@ for file in scripts/*; do
   cp "$file" "$scripts/$name"
 done
 chmod +x "$scripts/claude-desktop.sh"
+# Menu entries go into any programs.json already there, keeping its others.
+if [[ -e "$app/programs.json" ]]; then
+  python3 - "$app/programs.json" programs.json "$backup" <<'PY'
+import json, os, shutil, sys
+path, mine, backup = sys.argv[1:]
+have = json.load(open(path))
+merged = {**have, "programs": {**have.get("programs", {}), **json.load(open(mine))["programs"]}}
+if merged != have:
+    os.makedirs(backup, exist_ok=True)
+    shutil.copy(path, backup)
+    json.dump(merged, open(path, "w"), indent=2)
+PY
+else
+  cp programs.json "$app/programs.json"
+fi
 echo "Installed into $app"
 if [[ -d "$backup" ]]; then echo "Replaced files saved in $backup"; fi

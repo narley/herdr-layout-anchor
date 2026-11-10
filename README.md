@@ -12,7 +12,7 @@ with Herdr Desktop. Built against Herdr Desktop 0.1.14.
 herdr-app do layout.switch --name anchor
 ```
 
-The script copies `layouts/`, `themes/` and `mods/` into `~/.config/herdr-app` (or `$HERDR_APP_HOME`), and `scripts/`
+The script copies `layouts/`, `themes/`, `mods/` and `programs.json` into `~/.config/herdr-app` (or `$HERDR_APP_HOME`), and `scripts/`
 into `~/.config/herdr`. It saves any files it replaces to `backups/` in the Herdr home first. Mods reload by themselves.
 
 ## Claude Code stats
@@ -26,6 +26,13 @@ Claude Code, add this to the status line script, where `$input` holds the JSON C
 
 It needs `jq`, and does nothing outside a Herdr terminal. Without it, sessions still appear, just without stats.
 
+## Claude in the new-tab menu
+
+`programs.json` adds **Claude (personal)** and **Claude (work)** to Herdr's new-tab menu (the `+` in the tab bar). They run the
+shell aliases `ccp` and `ccw` from `~/.zshrc` on the machine the space is on, which start Claude Code with
+`~/.claude-personal` or `~/.claude-work` as its config; on a machine without them they start nothing. The install
+script adds the two entries to any `programs.json` already in the Herdr home, keeping its others.
+
 ## What's here
 
 | Path | What it is |
@@ -34,5 +41,6 @@ It needs `jq`, and does nothing outside a Herdr terminal. Without it, sessions s
 | `themes/` | Its theme |
 | `mods/` | Its sidebar and other mods, including the Close / Delete worktree dialog (`session-actions`) |
 | `scripts/` | The stats script |
+| `programs.json` | The two Claude entries for the new-tab menu |
 
 See `NOTICE.md` for what this derives from.
