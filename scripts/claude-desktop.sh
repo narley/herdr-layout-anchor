@@ -50,6 +50,38 @@ subagents() {
             at: $at}'
 }
 
+# `claude agents --json`, cached for AGENTS_TTL seconds per config dir. Every status
+# line refresh in every session lands here, and each call starts a full claude
+# process (~150 MB plus a keychain lookup). Uncached, they pile up under memory
+# pressure and can exhaust it. One caller refreshes behind a lock, with a hard
+# timeout; the rest read the last result (or [] when there is none yet).
+AGENTS_TTL=${AGENTS_TTL:-5}
+agents_json() {
+    local cfg=${CLAUDE_CONFIG_DIR:-$HOME/.claude} key f lock age claude tmp
+    key=${cfg//[^A-Za-z0-9]/_}
+    f="$CACHE/agents$key.json"; lock="${TMPDIR:-/tmp}/claude-desktop-agents$key.lock"
+    age=$(( $(date +%s) - $(stat -f %m "$f" 2>/dev/null || echo 0) ))
+    if (( age >= AGENTS_TTL )); then
+        # A lock older than 30 s was left by a killed refresher: take it over.
+        if [[ -d "$lock" ]] && (( $(date +%s) - $(stat -f %m "$lock" 2>/dev/null || echo 0) > 30 )); then
+            rmdir "$lock" 2>/dev/null
+        fi
+        if mkdir "$lock" 2>/dev/null; then
+            mkdir -p "$CACHE"
+            claude=$(command -v claude 2>/dev/null || echo "$HOME/.local/bin/claude")
+            tmp="$f.$$"
+            if perl -e 'alarm shift; exec @ARGV' 10 "$claude" agents --json >"$tmp" 2>/dev/null \
+               && jq -e 'type == "array"' "$tmp" >/dev/null 2>&1; then
+                mv -f "$tmp" "$f"
+            else
+                rm -f "$tmp"; touch "$f" 2>/dev/null   # failed: back off a full TTL too
+            fi
+            rmdir "$lock" 2>/dev/null
+        fi
+    fi
+    if jq -e 'type == "array"' "$f" >/dev/null 2>&1; then cat "$f"; else echo '[]'; fi
+}
+
 # `claude --bg` sessions attached to this terminal: its child terminals labelled
 # claude.bg=<session id>. They keep their own transcripts, so subagents() can't see
 # them; their state comes from `claude agents`. Prints [{id, address, name, working, state}].
@@ -61,8 +93,7 @@ attached() {
             "$hc" get "$a" --json 2>/dev/null | jq -c 'select(.labels["claude.bg"]) | {(.labels["claude.bg"]): .address}'
         done | jq -sc 'add // {}')
     [[ -z "$map" || "$map" == '{}' ]] && { echo '[]'; return; }
-    claude=$(command -v claude 2>/dev/null || echo "$HOME/.local/bin/claude")
-    "$claude" agents --json 2>/dev/null | jq -c --argjson map "$map" '
+    agents_json | jq -c --argjson map "$map" '
         [.[] | select(.id and $map[.id])
          | {id, address: $map[.id], name: (.name // .id),
             working: (.status == "busy" or .state == "working"),
