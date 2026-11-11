@@ -33,6 +33,22 @@ shell aliases `ccp` and `ccw` from `~/.zshrc` on the machine the space is on, wh
 `~/.claude-personal` or `~/.claude-work` as its config; on a machine without them they start nothing. The install
 script adds the two entries to any `programs.json` already in the Herdr home, keeping its others.
 
+## Background sessions beside their session
+
+When a Claude session in a Herdr pane starts background sessions (`claude --bg`), `scripts/claude-bg-panes.py` shows
+each one beside it: the session keeps the left, and its background sessions stack evenly in a column on the right, each
+running `claude attach <id>`. It's a Claude Code hook, so add it to the `hooks` in each Claude config's
+`settings.json` on every machine that runs sessions:
+
+```json
+"PostToolUse": [
+  { "matcher": "Bash", "hooks": [{ "type": "command", "command": "python3 -I ~/.config/herdr/claude-bg-panes.py", "timeout": 30 }] }
+]
+```
+
+It only acts on background sessions Claude starts itself; `claude --bg` typed in a plain shell opens nothing. Problems go
+to `~/.cache/herdr-claude/bg-panes.log`.
+
 ## What's here
 
 | Path | What it is |
@@ -40,7 +56,7 @@ script adds the two entries to any `programs.json` already in the Herdr home, ke
 | `layouts/` | The layout, and its picture for the settings screen, if it has one |
 | `themes/` | Its theme |
 | `mods/` | Its sidebar and other mods, including the Close / Delete worktree dialog (`session-actions`) |
-| `scripts/` | The stats script |
+| `scripts/` | The stats script and the background-session hook |
 | `programs.json` | The two Claude entries for the new-tab menu |
 
 See `NOTICE.md` for what this derives from.
