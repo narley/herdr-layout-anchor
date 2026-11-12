@@ -7,6 +7,7 @@
 //   Parking lot    Type a stray thought, press Enter, and the keyboard returns to your pane.
 //
 // Colour never carries meaning alone, and nothing here flashes or pulses.
+// With more than one machine, sessions on another one carry its name, and Spaces are grouped by machine.
 // Everything is kept in shared state, so it survives restarts:
 //   anchor.now     { <tab id>: { text, at } }       anchor.seen    { <tab id>: ms left the tab }
 //   anchor.timer   { kind, start, end, told }       anchor.parked  [{ text, at }]
@@ -128,6 +129,9 @@ function claudeStats(all) {
   return out;
 }
 
+// The machine a session lives on: the prefix of a remote address ("macmini/t4"), null for this one.
+const machineOf = (address) => (String(address ?? "").includes("/") ? String(address).split("/")[0] : null);
+
 function nameOf(a, s, sp) {
   if (s?.name) return s.name;
   for (const space of sp) for (const tab of space.tabs ?? []) if (tab.id === a.tab) return tab.named ? tab.name : space.name;
@@ -137,6 +141,7 @@ function nameOf(a, s, sp) {
 // The numbers stay out of sight until you hover.
 function detailsTip(a, s, name, now) {
   const lines = [name, WORDS[a.status] ?? String(a.status ?? "")];
+  if (machineOf(a.address)) lines.push(`On ${machineOf(a.address)}`);
   if (!s || a.status === "detached") return lines.join("\n");
   const old = now - (s.at ?? 0) > STALE_S ? " (old reading)" : "";
   lines.push(s.repo || "~");
@@ -455,6 +460,13 @@ export default class Anchor extends View {
 
   // ---- sessions ----
 
+  // The other machine's name beside a session on it; nothing for this one, or with only one machine.
+  machineTag(address, t) {
+    const m = machineOf(address);
+    if (!m || !this.multi) return null;
+    return div().flex_none().max_w(80).truncate().px(5).rounded(4).bg(t.raised).text_size(10.5).text_color(t.muted).child(m);
+  }
+
   sessionCard(a, s, kids, sp, now, focusedTerm, t) {
     const name = nameOf(a, s, sp);
     const here = a.address === focusedTerm;
@@ -466,6 +478,7 @@ export default class Anchor extends View {
       .child(h_flex().w_full().gap(7).items_center()
         .child(this.dot(a.status))
         .child(div().id(`anchor-card-name-${a.address}`).flex_1().min_w(0).truncate().text_size(13.5).font_semibold().text_color(t.foreground).tooltip(detailsTip(a, s, name, now)).child(name))
+        .children([this.machineTag(a.address, t)].filter(Boolean))
         .when(hovered, (el) => el.child(this.sessionButtons(a, s, kids))))
       .child(div().text_size(12).text_color(t[a.status] ?? t.muted).child(WORDS[a.status] ?? String(a.status ?? "")))
       .when(Boolean(s?.repo), (el) => el.child(div().w_full().truncate().text_size(11.5).text_color(t.muted).child(`${s.repo}${s.branch ? ` · ${s.branch}` : ""}`)))
@@ -483,6 +496,7 @@ export default class Anchor extends View {
       .on_click(() => this.go(a))
       .child(this.dot(a.status))
       .child(div().id(`anchor-row-name-${a.address}`).flex_1().min_w(0).truncate().text_size(12.5).text_color(t.foreground).tooltip(detailsTip(a, s, name, now)).child(name))
+      .children([this.machineTag(a.address, t)].filter(Boolean))
       .when(hovered, (el) => el.child(this.sessionButtons(a, s, kids)))
       .when(!hovered, (el) => el.child(div().flex_none().text_size(11.5).text_color(t.muted).child(SHORT[a.status] ?? String(a.status ?? ""))));
   }
@@ -560,21 +574,31 @@ export default class Anchor extends View {
 
   // ---- spaces, folded down to one line ----
 
+  // Spaces in Herdr's order, grouped by machine: this one first, the others as they first appear.
+  byMachine(sp) {
+    const groups = new Map([[null, []]]);
+    for (const s of sp) { const m = s.machine ?? null; if (!groups.has(m)) groups.set(m, []); groups.get(m).push(s); }
+    return [...groups].filter(([, list]) => list.length);
+  }
+
   spacesSection(t, sp) {
     const active = sp.find((s) => s.active);
     const others = sp.filter((s) => !s.active);
     const waiting = others.filter((s) => s.status === "blocked" || s.status === "done").length;
     return v_flex().w_full().flex_none().px(10).py(4).border_t(1).border_color(t.border)
-      .when(this.showSpaces, (el) => el.child(v_flex().id("anchor-spaces").w_full().max_h(180).gap(1).pb(4).overflow_y_scrollbar()
-        .children(sp.map((s) => h_flex().id(`anchor-space-${s.id}`).w_full().h(26).flex_none().px(6).gap(7).items_center().rounded(6)
+      .when(this.showSpaces, (el) => el.child(v_flex().id("anchor-spaces").w_full().max_h(220).gap(1).pb(4).overflow_y_scrollbar()
+        .children(this.byMachine(sp).flatMap(([m, list]) => [
+          ...(this.multi ? [div().w_full().h(20).flex_none().px(6).pt(4).text_size(10.5).font_medium().text_color(t.dim).child(m ?? "This Mac")] : []),
+          ...list.map((s) => h_flex().id(`anchor-space-${s.id}`).w_full().h(26).flex_none().px(6).gap(7).items_center().rounded(6)
           .bg(s.active ? t.selected : t.chrome).cursor_pointer().hover((x) => x.bg(t.hover))
           .on_click((_e, cx) => { run("space.select", { id: s.id }); this.showSpaces = false; cx.notify(); })
           .child(this.dot(s.status ?? "idle"))
-          .child(div().flex_1().min_w(0).truncate().text_size(12.5).text_color(t.foreground).child(s.name))))))
+          .child(div().flex_1().min_w(0).truncate().text_size(12.5).text_color(t.foreground).child(s.name)))]))))
       .child(h_flex().id("anchor-space-toggle").w_full().h(26).px(6).gap(6).items_center().rounded(6).cursor_pointer().hover((x) => x.bg(t.hover))
         .tooltip(this.showSpaces ? "Fold spaces" : "Switch space")
         .on_click((_e, cx) => { this.showSpaces = !this.showSpaces; cx.notify(); })
         .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.muted).child(active?.name ?? "Spaces"))
+        .when(Boolean(this.multi && active?.machine), (el) => el.child(this.machineTag(`${active.machine}/`, t)))
         .when(waiting > 0, (el) => el.child(div().flex_none().text_size(11.5).text_color(t.blocked).child(`${waiting} waiting`)))
         .when(others.length > 0, (el) => el.child(div().flex_none().text_size(11.5).text_color(t.dim).child(`+${others.length}`))));
   }
@@ -583,6 +607,7 @@ export default class Anchor extends View {
     const t = theme();
     if (props()?.bar) return this.bar(t);
     const sp = spaces();
+    this.multi = new Set(sp.map((s) => s.machine ?? null)).size > 1;
     const { tab, label } = currentTab();
     this.trackTab(tab?.id ?? null);
     const focused = focusedPane();
