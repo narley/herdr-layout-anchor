@@ -38,7 +38,7 @@ const NUDGE_SNOOZE_MS = 30 * MIN_MS;
 const AWAY_MS = 10 * MIN_MS;              // this long away from the window counts as a break
 const SLEPT_MS = 2 * MIN_MS;              // a longer gap between ticks means the machine slept
 const STALE_S = 12 * 3600;
-const SPACES_MAX_H = 420;               // the open Spaces list; past this it scrolls
+const SPACES_MAX_H = 180;               // the open Spaces list; past this it scrolls
 
 const WORDS = {
   blocked: "Waiting for your answer",
@@ -586,18 +586,18 @@ export default class Anchor extends View {
     const active = sp.find((s) => s.active);
     const others = sp.filter((s) => !s.active);
     const waiting = others.filter((s) => s.status === "blocked" || s.status === "done").length;
-    // Tall enough for every space (the session list above gives way), scrolling past SPACES_MAX_H.
+    // As tall as its spaces, up to SPACES_MAX_H; past that it scrolls, with the bar always shown.
     const groups = this.byMachine(sp);
     const listH = Math.min(SPACES_MAX_H, sp.length * 27 + (this.multi ? groups.length * 21 : 0) + 4);
     return v_flex().w_full().flex_none().px(10).py(4).border_t(1).border_color(t.border)
-      .when(this.showSpaces, (el) => el.child(v_flex().id("anchor-spaces").w_full().h(listH).flex_none().gap(1).pb(4).overflow_y_scrollbar()
+      .when(this.showSpaces, (el) => el.child(v_flex().w_full().h(listH).flex_none().pb(4).child(v_flex().id("anchor-spaces").w_full().flex_1().min_h(0).gap(1).overflow_y_scrollbar().mode("always")
         .children(groups.flatMap(([m, list]) => [
           ...(this.multi ? [div().w_full().h(20).flex_none().px(6).pt(4).text_size(10.5).font_medium().text_color(t.dim).child(m ?? "This Mac")] : []),
           ...list.map((s) => h_flex().id(`anchor-space-${s.id}`).w_full().h(26).flex_none().px(6).gap(7).items_center().rounded(6)
           .bg(s.active ? t.selected : t.chrome).cursor_pointer().hover((x) => x.bg(t.hover))
           .on_click((_e, cx) => { run("space.select", { id: s.id }); this.showSpaces = false; cx.notify(); })
           .child(this.dot(s.status ?? "idle"))
-          .child(div().flex_1().min_w(0).truncate().text_size(12.5).text_color(t.foreground).child(s.name)))]))))
+          .child(div().flex_1().min_w(0).truncate().text_size(12.5).text_color(t.foreground).child(s.name)))])))))
       .child(h_flex().id("anchor-space-toggle").w_full().h(26).px(6).gap(6).items_center().rounded(6).cursor_pointer().hover((x) => x.bg(t.hover))
         .tooltip(this.showSpaces ? "Fold spaces" : "Switch space")
         .on_click((_e, cx) => { this.showSpaces = !this.showSpaces; cx.notify(); })
