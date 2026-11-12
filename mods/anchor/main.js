@@ -7,7 +7,7 @@
 //   Parking lot    Type a stray thought, press Enter, and the keyboard returns to your pane.
 //
 // Colour never carries meaning alone, and nothing here flashes or pulses.
-// With more than one machine, sessions on another one carry its name, and Spaces are grouped by machine.
+// With more than one machine, each session carries its machine's name ("local" for this one), and Spaces are grouped by machine.
 // Everything is kept in shared state, so it survives restarts:
 //   anchor.now     { <tab id>: { text, at } }       anchor.seen    { <tab id>: ms left the tab }
 //   anchor.timer   { kind, start, end, told }       anchor.parked  [{ text, at }]
@@ -461,11 +461,10 @@ export default class Anchor extends View {
 
   // ---- sessions ----
 
-  // The other machine's name beside a session on it; nothing for this one, or with only one machine.
+  // Which machine a session is on, with more than one machine: its name, or "local" for this one.
   machineTag(address, t) {
-    const m = machineOf(address);
-    if (!m || !this.multi) return null;
-    return div().flex_none().max_w(80).truncate().px(5).rounded(4).bg(t.raised).text_size(10.5).text_color(t.muted).child(m);
+    if (!this.multi) return null;
+    return div().flex_none().max_w(80).truncate().px(5).rounded(4).bg(t.raised).text_size(10.5).text_color(t.muted).child(machineOf(address) ?? "local");
   }
 
   sessionCard(a, s, kids, sp, now, focusedTerm, t) {
