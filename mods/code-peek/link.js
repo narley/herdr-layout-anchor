@@ -7,11 +7,21 @@ import { panes, run, setShared } from "herdr";
 const PEEK = "code-peek";
 
 // The path part of a link's text: no :line:col suffix, no #L anchor, no file:// prefix.
+// Sentence punctuation after a link ("see /x/spike.md." or "(foo.ts:318),") isn't part of it.
 function pathOf(raw) {
   return String(raw ?? "")
+    .replace(TRAIL, "")
     .replace(/^file:\/\/[^/]*/, "")
     .replace(/#L\d+.*$/, "")
     .replace(/(:\d+){1,2}(-\d+)?$/, "");
+}
+
+// The line in a link's text ("foo.ts:318", "foo.ts:12:4)", "foo.py#L40"), or null.
+const TRAIL = /[.,;:!?)\]}'"\u00bb\u2026]+$/;
+function lineOf(raw) {
+  const text = String(raw ?? "").replace(TRAIL, "");
+  const m = /:(\d+)(?::\d+)?(?:-\d+)?$/.exec(text) || /#L(\d+)/.exec(text);
+  return m ? Number(m[1]) : null;
 }
 
 function resolve(path, cwd) {
@@ -30,9 +40,11 @@ export async function handleLink({ link, source }) {
   const remote = Boolean(source.machine);
   if (!link.line && !remote) return "pass";
   const path = link.path ?? resolve(pathOf(link.raw), source.cwd);
+  // the line, when Herdr couldn't read it from text it didn't resolve (a remote terminal's link)
+  const line = link.line ?? lineOf(link.raw);
   if (!path) return "pass";
   const tab = source.tab;
-  setShared(`${PEEK}.${tab}`, { path, line: link.line ?? 1, machine: source.machine ?? null, at: Date.now() });
+  setShared(`${PEEK}.${tab}`, { path, line: line ?? 1, machine: source.machine ?? null, cwd: source.cwd ?? null, at: Date.now() });
   const open = panes().find((p) => p.mod === PEEK && p.tab === tab);
   if (open) run("pane.focus", { pane: open.pane });
   else run("pane.split", { direction: "right", ...(source.pane ? { pane: source.pane } : {}), mod: PEEK, props: { tab } });

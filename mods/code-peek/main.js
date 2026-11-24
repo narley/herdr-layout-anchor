@@ -3,7 +3,7 @@
 // shared "code-peek.<tab>" ({ path, line, machine, at }), so one pane per tab follows the clicks.
 import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex, Editor, EditorState } from "gpui-base";
-import { props, shared, theme, settings, readTextFile, run, panes } from "herdr";
+import { props, shared, theme, settings, readTextFile, exec, run, panes } from "herdr";
 
 const PEEK = "code-peek";
 // Language names the editor knows, as Herdr's own Files viewer maps them.
@@ -46,13 +46,26 @@ export default class CodePeek extends View {
     cx.notify();
     cx.spawn(async (cx) => {
       try {
-        const text = await readTextFile(want.path, { on: want.machine ?? null });
+        let text = await readTextFile(want.path, { on: want.machine ?? null });
+        // Not there: a name given without its folder ("mlo-processor.ts:318"). Look it up among
+        // the git repo's files, from the terminal's folder; the first match wins.
+        if (text === null && want.cwd) {
+          const name = want.path.split("/").pop();
+          const r = await exec("git", ["-C", want.cwd, "ls-files", "--full-name", "--", `:(glob)**/${name}`], { on: want.machine ?? null, timeout: 10000 }).catch(() => null);
+          const found = (r?.stdout ?? "").split("\n").filter(Boolean);
+          if (found.length) {
+            const top = await exec("git", ["-C", want.cwd, "rev-parse", "--show-toplevel"], { on: want.machine ?? null, timeout: 10000 });
+            const path = `${top.stdout.trim()}/${found[0]}`;
+            text = await readTextFile(path, { on: want.machine ?? null });
+            if (text !== null) this.target = { ...want, path, matches: found.length };
+          }
+        }
         if (this.at !== want.at) return;
-        if (text === null) { this.code = null; this.error = "File not found"; return; }
+        if (text === null) { this.code = null; this.error = `File not found: ${want.path}`; return; }
         if (text.includes("\0")) { this.code = null; this.error = "Binary file"; return; }
         const value = text.length > MAX ? `${text.slice(0, MAX)}\n… (file truncated)` : text;
         const t = theme();
-        const ext = (want.path.split("/").pop().split(".").pop() ?? "").toLowerCase();
+        const ext = (this.target.path.split("/").pop().split(".").pop() ?? "").toLowerCase();
         this.code?.release?.();
         this.code = EditorState.new({ language: LANG[ext] ?? ext, readonly: true, value,
           syntax: { keyword: t.ansi5, string: t.ansi2, comment: t.dim, function: t.ansi4, type: t.ansi3, number: t.ansi1, constant: t.ansi6 } });
@@ -83,7 +96,7 @@ export default class CodePeek extends View {
     return v_flex().size_full().bg(t.background)
       .child(h_flex().h(28).flex_none().px(10).gap(8).items_center().border_b(1).border_color(t.border).bg(t.chrome).text_size(12)
         .child(div().flex_none().font_semibold().text_color(t.foreground).child(want ? `${name}:${want.line ?? 1}` : "Code"))
-        .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(`${want?.machine ? `${want.machine}:` : ""}${folder}`))
+        .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(`${want?.machine ? `${want.machine}:` : ""}${folder}${want?.matches > 1 ? ` · first of ${want.matches} files with this name` : ""}`))
         .child(div().id("code-peek-close").size(18).flex_none().flex().items_center().justify_center().rounded(4).cursor_pointer()
           .text_color(t.dim).hover((x) => x.bg(t.hover).text_color(t.foreground)).tooltip("Close")
           .on_click(() => this.close())
