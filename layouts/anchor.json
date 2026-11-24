@@ -95,5 +95,6 @@
         }
       ]
     }
-  ]
+  ],
+  "link_handlers": ["code-peek"]
 }

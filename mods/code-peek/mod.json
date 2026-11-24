@@ -1,0 +1,7 @@
+{
+  "place": "none",
+  "title": "Code",
+  "link_handlers": [
+    { "kind": "file", "pattern": "(?i)\\.(tsx?|jsx?|mjs|cjs|py|rs|go|rb|java|kt|swift|c|h|cc|cpp|hpp|cs|php|sql|sh|zsh|bash|json|jsonc|ya?ml|toml|md|css|scss|html|vue|svelte|tf|graphql|gql|prisma|lua|ex|exs)(:\\d+(:\\d+)?|#L\\d+.*)?$" }
+  ]
+}
