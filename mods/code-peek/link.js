@@ -44,7 +44,7 @@ export async function handleLink({ link, source }) {
   const line = link.line ?? lineOf(link.raw);
   if (!path) return "pass";
   const tab = source.tab;
-  setShared(`${PEEK}.${tab}`, { path, line: line ?? 1, machine: source.machine ?? null, cwd: source.cwd ?? null, at: Date.now() });
+  setShared(`${PEEK}.${tab}`, { path, line: line ?? 1, machine: source.machine ?? null, cwd: source.cwd ?? null, ref: pathOf(link.raw), at: Date.now() });
   const open = panes().find((p) => p.mod === PEEK && p.tab === tab);
   if (open) run("pane.focus", { pane: open.pane });
   else run("pane.split", { direction: "right", ...(source.pane ? { pane: source.pane } : {}), mod: PEEK, props: { tab } });

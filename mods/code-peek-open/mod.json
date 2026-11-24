@@ -1,0 +1,8 @@
+{
+  "place": "none",
+  "title": "Open code reference",
+  "overlay": { "width": 380, "height": 56 },
+  "palette": [
+    { "title": "Open code reference (selected text)", "command": "mod.open", "args": { "name": "code-peek-open" }, "words": "file line code peek grep find" }
+  ]
+}

@@ -23,6 +23,30 @@ function lineRange(text, line) {
   return { start, end: end < 0 ? text.length : end };
 }
 
+// Where a reference given without its full folder ("mlo-processor.ts", "lambdas/mlo-processor.ts")
+// is, under the terminal's folder on its machine: the git repo's files first (fast, skips build
+// output), else a find that skips node_modules and .git. Shortest paths first.
+async function locate(want) {
+  const on = want.machine ?? null;
+  const ref = String(want.ref ?? want.path.split("/").pop()).replace(/^(\.\/)+/, "");
+  if (!ref || ref.startsWith("/") || ref.includes("..")) return { paths: [] };
+  const name = ref.split("/").pop();
+  const tail = (p) => p === ref || p.endsWith(`/${ref}`);
+  const git = await exec("git", ["-C", want.cwd, "ls-files", "--full-name", "--", `:(glob)**/${name}`], { on, timeout: 10000 }).catch(() => null);
+  let paths = [];
+  if (git?.code === 0) {
+    const top = await exec("git", ["-C", want.cwd, "rev-parse", "--show-toplevel"], { on, timeout: 10000 }).catch(() => null);
+    const root = top?.stdout?.trim();
+    if (root) paths = git.stdout.split("\n").filter(Boolean).filter(tail).map((p) => `${root}/${p}`);
+  }
+  if (!paths.length) {
+    const r = await exec("find", [want.cwd, "-name", name, "-type", "f", "-not", "-path", "*/node_modules/*", "-not", "-path", "*/.git/*"], { on, timeout: 15000 }).catch(() => null);
+    paths = (r?.stdout ?? "").split("\n").filter(Boolean).filter(tail);
+  }
+  paths.sort((a, b) => a.length - b.length);
+  return { paths };
+}
+
 export default class CodePeek extends View {
   init(_props, cx) {
     this.key = `${PEEK}.${props()?.tab}`;
@@ -50,14 +74,10 @@ export default class CodePeek extends View {
         // Not there: a name given without its folder ("mlo-processor.ts:318"). Look it up among
         // the git repo's files, from the terminal's folder; the first match wins.
         if (text === null && want.cwd) {
-          const name = want.path.split("/").pop();
-          const r = await exec("git", ["-C", want.cwd, "ls-files", "--full-name", "--", `:(glob)**/${name}`], { on: want.machine ?? null, timeout: 10000 }).catch(() => null);
-          const found = (r?.stdout ?? "").split("\n").filter(Boolean);
-          if (found.length) {
-            const top = await exec("git", ["-C", want.cwd, "rev-parse", "--show-toplevel"], { on: want.machine ?? null, timeout: 10000 });
-            const path = `${top.stdout.trim()}/${found[0]}`;
-            text = await readTextFile(path, { on: want.machine ?? null });
-            if (text !== null) this.target = { ...want, path, matches: found.length };
+          const found = await locate(want);
+          if (found.paths.length) {
+            text = await readTextFile(found.paths[0], { on: want.machine ?? null });
+            if (text !== null) this.target = { ...want, path: found.paths[0], matches: found.paths.length };
           }
         }
         if (this.at !== want.at) return;
